@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="pt-BR">
-<!-- BUILD: MINIBOX GESTAO v1.0.3 DEV - BASE DESPERSONALIZADA -->
+<!-- BUILD: MINIBOX GESTAO v1.0.4 DEV - BASE DESPERSONALIZADA -->
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
@@ -307,7 +307,7 @@ body.sidebarCollapsed .sidebarBrand{display:none}
     <p id="loginDescricao">Entre com sua conta da nuvem.</p>
 
     <div id="loginNormal">
-      <div class="msg">🧪 MiniBox Gestão v1.0.3 DEV — ambiente de desenvolvimento.</div>
+      <div class="msg">🧪 MiniBox Gestão v1.0.4 DEV — ambiente de desenvolvimento.</div>
       <label>E-mail</label>
       <input id="loginUsuario" type="email" autocomplete="username" placeholder="Seu e-mail">
       <label>Senha</label>
@@ -406,7 +406,7 @@ body.sidebarCollapsed .sidebarBrand{display:none}
 <header id="appHeader" class="hidden">
   <div class="appBrand">
     <div class="appBrandLogoText"><span>MiniBox</span> Gestão</div>
-    <div class="appBrandSub">PLATAFORMA DE GESTÃO • v1.0.3 DEV</div>
+    <div class="appBrandSub">PLATAFORMA DE GESTÃO • v1.0.4 DEV</div>
   </div>
   <div class="userBar">
     <span class="userIdentity">👤 <b id="usuarioLogadoNome">—</b> <span id="usuarioLogadoPerfil"></span></span>
@@ -1568,6 +1568,11 @@ const sbCadastro=window.supabase?window.supabase.createClient(SUPABASE_URL,SUPAB
 
 
 const PK='MB_P_V4', VK='MB_V_V4', EK='MB_E_V1', CK='MB_CX_V1', MK='MB_MAQ_V1', UK='MB_USR_V1', SK='MB_SESSION_V1', CLK='MB_CLIENTES_V1', FRK='MB_FIADOS_V1', RK='MB_REMEMBER_SESSION_V1', CXCFGK='MB_CAIXA_CONFIG_V1', CXSNOOZEK='MB_CAIXA_SNOOZE_V1', LRK='MB_LISTA_REPOSICAO_V1', IK='MB_INVENTARIO_V1', SCK='MB_SAIDAS_CONSUMO_V1', VCK='MB_VENCIMENTOS_V1', CBK='MB_COMBOS_V1';
+function chaveEmpresaLocal(base){
+  // Cada empresa recebe um namespace próprio no navegador.
+  // Antes de uma empresa estar selecionada, dados operacionais não são lidos nem gravados.
+  return lojaIdNuvem ? ('MBG_EMPRESA_'+lojaIdNuvem+'__'+base) : null;
+}
 const $=id=>document.getElementById(id);
 const money=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
@@ -1578,20 +1583,10 @@ let caixaConfig={ativo:true,hora:'22:00'};
 let scanner=null, produtoEditando=null;
 let leituraCandidata='', leituraRepeticoes=0, ultimaLeituraEm=0, scannerProcessando=false;
 
-try{produtos=JSON.parse(localStorage.getItem(PK)||'{}')||{}}catch(e){produtos={}}
-try{vendas=JSON.parse(localStorage.getItem(VK)||'[]')||[]}catch(e){vendas=[]}
-try{entradas=JSON.parse(localStorage.getItem(EK)||'[]')||[]}catch(e){entradas=[]}
-try{fechamentos=JSON.parse(localStorage.getItem(CK)||'[]')||[]}catch(e){fechamentos=[]}
-try{maquinas=JSON.parse(localStorage.getItem(MK)||'[]')||[]}catch(e){maquinas=[]}
-try{usuarios=JSON.parse(localStorage.getItem(UK)||'[]')||[]}catch(e){usuarios=[]}
-try{clientes=JSON.parse(localStorage.getItem(CLK)||'[]')||[]}catch(e){clientes=[]}
-try{fiados=JSON.parse(localStorage.getItem(FRK)||'[]')||[]}catch(e){fiados=[]}
-try{listaReposicao=JSON.parse(localStorage.getItem(LRK)||'[]')||[]}catch(e){listaReposicao=[]}
-try{inventarioAtual=JSON.parse(localStorage.getItem(IK)||'null')}catch(e){inventarioAtual=null}
-try{saidasConsumo=JSON.parse(localStorage.getItem(SCK)||'[]')||[]}catch(e){saidasConsumo=[]}
-try{vencimentos=JSON.parse(localStorage.getItem(VCK)||'[]')||[]}catch(e){vencimentos=[]}
-try{combos=JSON.parse(localStorage.getItem(CBK)||'[]')||[]}catch(e){combos=[]}
-try{caixaConfig={...caixaConfig,...(JSON.parse(localStorage.getItem(CXCFGK)||'{}')||{})}}catch(e){}
+// v1.0.4: não carregar chaves operacionais globais/legadas antes de saber qual empresa está ativa.
+produtos={}; vendas=[]; entradas=[]; fechamentos=[]; maquinas=[]; usuarios=[]; clientes=[]; fiados=[];
+listaReposicao=[]; inventarioAtual=null; saidasConsumo=[]; vencimentos=[]; combos=[]; carrinho=[];
+caixaConfig={ativo:true,hora:'22:00'};
 caixaConfig.ativo=caixaConfig.ativo!==false;
 if(!/^\d{2}:\d{2}$/.test(String(caixaConfig.hora||'')))caixaConfig.hora='22:00';
 if(!Array.isArray(vendas))vendas=[];
@@ -1623,21 +1618,21 @@ function migrarProdutos(){
 migrarProdutos();
 
 function persist(sincronizar=true){
-  if(MODO_DEMO)return;
-  localStorage.setItem(PK,JSON.stringify(produtos));
-  localStorage.setItem(VK,JSON.stringify(vendas));
-  localStorage.setItem(EK,JSON.stringify(entradas));
-  localStorage.setItem(CK,JSON.stringify(fechamentos));
-  localStorage.setItem(MK,JSON.stringify(maquinas));
-  localStorage.setItem(UK,JSON.stringify(usuarios));
-  localStorage.setItem(CLK,JSON.stringify(clientes));
-  localStorage.setItem(FRK,JSON.stringify(fiados));
-  localStorage.setItem(LRK,JSON.stringify(listaReposicao));
-  localStorage.setItem(IK,JSON.stringify(inventarioAtual));
-  localStorage.setItem(SCK,JSON.stringify(saidasConsumo));
-  localStorage.setItem(VCK,JSON.stringify(vencimentos));
-  localStorage.setItem(CBK,JSON.stringify(combos));
-  localStorage.setItem(CXCFGK,JSON.stringify(caixaConfig));
+  if(MODO_DEMO || !lojaIdNuvem)return;
+  localStorage.setItem(chaveEmpresaLocal(PK),JSON.stringify(produtos));
+  localStorage.setItem(chaveEmpresaLocal(VK),JSON.stringify(vendas));
+  localStorage.setItem(chaveEmpresaLocal(EK),JSON.stringify(entradas));
+  localStorage.setItem(chaveEmpresaLocal(CK),JSON.stringify(fechamentos));
+  localStorage.setItem(chaveEmpresaLocal(MK),JSON.stringify(maquinas));
+  localStorage.setItem(chaveEmpresaLocal(UK),JSON.stringify(usuarios));
+  localStorage.setItem(chaveEmpresaLocal(CLK),JSON.stringify(clientes));
+  localStorage.setItem(chaveEmpresaLocal(FRK),JSON.stringify(fiados));
+  localStorage.setItem(chaveEmpresaLocal(LRK),JSON.stringify(listaReposicao));
+  localStorage.setItem(chaveEmpresaLocal(IK),JSON.stringify(inventarioAtual));
+  localStorage.setItem(chaveEmpresaLocal(SCK),JSON.stringify(saidasConsumo));
+  localStorage.setItem(chaveEmpresaLocal(VCK),JSON.stringify(vencimentos));
+  localStorage.setItem(chaveEmpresaLocal(CBK),JSON.stringify(combos));
+  localStorage.setItem(chaveEmpresaLocal(CXCFGK),JSON.stringify(caixaConfig));
   if(sincronizar && !aplicandoNuvem && usuarioNuvem && lojaIdNuvem)agendarSyncNuvem();
 }
 persist();
@@ -1733,21 +1728,30 @@ function limparBloqueiosDemo(){
 }
 
 function restaurarDadosLocaisAposDemo(){
-  try{produtos=JSON.parse(localStorage.getItem(PK)||'{}')||{}}catch(e){produtos={}}
-  try{vendas=JSON.parse(localStorage.getItem(VK)||'[]')||[]}catch(e){vendas=[]}
-  try{entradas=JSON.parse(localStorage.getItem(EK)||'[]')||[]}catch(e){entradas=[]}
-  try{fechamentos=JSON.parse(localStorage.getItem(CK)||'[]')||[]}catch(e){fechamentos=[]}
-  try{maquinas=JSON.parse(localStorage.getItem(MK)||'[]')||[]}catch(e){maquinas=[]}
-  try{usuarios=JSON.parse(localStorage.getItem(UK)||'[]')||[]}catch(e){usuarios=[]}
-  try{clientes=JSON.parse(localStorage.getItem(CLK)||'[]')||[]}catch(e){clientes=[]}
-  try{fiados=JSON.parse(localStorage.getItem(FRK)||'[]')||[]}catch(e){fiados=[]}
-  try{listaReposicao=JSON.parse(localStorage.getItem(LRK)||'[]')||[]}catch(e){listaReposicao=[]}
-  try{combos=JSON.parse(localStorage.getItem(CBK)||'[]')||[]}catch(e){combos=[]}
+  // Sempre começa limpo; depois carrega SOMENTE o namespace da empresa ativa.
+  produtos={}; vendas=[]; entradas=[]; fechamentos=[]; maquinas=[]; usuarios=[]; clientes=[]; fiados=[];
+  listaReposicao=[]; inventarioAtual=null; saidasConsumo=[]; vencimentos=[]; combos=[]; carrinho=[];
   caixaConfig={ativo:true,hora:'22:00'};
-  try{caixaConfig={...caixaConfig,...(JSON.parse(localStorage.getItem(CXCFGK)||'{}')||{})}}catch(e){}
+
+  if(!lojaIdNuvem)return;
+
+  try{produtos=JSON.parse(localStorage.getItem(chaveEmpresaLocal(PK))||'{}')||{}}catch(e){produtos={}}
+  try{vendas=JSON.parse(localStorage.getItem(chaveEmpresaLocal(VK))||'[]')||[]}catch(e){vendas=[]}
+  try{entradas=JSON.parse(localStorage.getItem(chaveEmpresaLocal(EK))||'[]')||[]}catch(e){entradas=[]}
+  try{fechamentos=JSON.parse(localStorage.getItem(chaveEmpresaLocal(CK))||'[]')||[]}catch(e){fechamentos=[]}
+  try{maquinas=JSON.parse(localStorage.getItem(chaveEmpresaLocal(MK))||'[]')||[]}catch(e){maquinas=[]}
+  try{usuarios=JSON.parse(localStorage.getItem(chaveEmpresaLocal(UK))||'[]')||[]}catch(e){usuarios=[]}
+  try{clientes=JSON.parse(localStorage.getItem(chaveEmpresaLocal(CLK))||'[]')||[]}catch(e){clientes=[]}
+  try{fiados=JSON.parse(localStorage.getItem(chaveEmpresaLocal(FRK))||'[]')||[]}catch(e){fiados=[]}
+  try{listaReposicao=JSON.parse(localStorage.getItem(chaveEmpresaLocal(LRK))||'[]')||[]}catch(e){listaReposicao=[]}
+  try{inventarioAtual=JSON.parse(localStorage.getItem(chaveEmpresaLocal(IK))||'null')}catch(e){inventarioAtual=null}
+  try{saidasConsumo=JSON.parse(localStorage.getItem(chaveEmpresaLocal(SCK))||'[]')||[]}catch(e){saidasConsumo=[]}
+  try{vencimentos=JSON.parse(localStorage.getItem(chaveEmpresaLocal(VCK))||'[]')||[]}catch(e){vencimentos=[]}
+  try{combos=JSON.parse(localStorage.getItem(chaveEmpresaLocal(CBK))||'[]')||[]}catch(e){combos=[]}
+  try{caixaConfig={...caixaConfig,...(JSON.parse(localStorage.getItem(chaveEmpresaLocal(CXCFGK))||'{}')||{})}}catch(e){}
+
   caixaConfig.ativo=caixaConfig.ativo!==false;
   if(!/^\d{2}:\d{2}$/.test(String(caixaConfig.hora||'')))caixaConfig.hora='22:00';
-
   if(!produtos || typeof produtos!=='object' || Array.isArray(produtos))produtos={};
   if(!Array.isArray(vendas))vendas=[];
   if(!Array.isArray(entradas))entradas=[];
@@ -1756,7 +1760,11 @@ function restaurarDadosLocaisAposDemo(){
   if(!Array.isArray(usuarios))usuarios=[];
   if(!Array.isArray(clientes))clientes=[];
   if(!Array.isArray(fiados))fiados=[];
-  carrinho=[];
+  if(!Array.isArray(listaReposicao))listaReposicao=[];
+  if(!Array.isArray(saidasConsumo))saidasConsumo=[];
+  if(!Array.isArray(vencimentos))vencimentos=[];
+  if(!Array.isArray(combos))combos=[];
+  migrarProdutos();
 }
 
 async function sairModoDemo(){
@@ -2202,6 +2210,7 @@ async function prepararSessaoNuvem(session){
   const vinculo=vinculos[0];
   lojaIdNuvem=vinculo.empresa_id; // compatibilidade temporária: agora representa empresa_id
   const empresa=await obterEmpresaNuvem(lojaIdNuvem);
+  restaurarDadosLocaisAposDemo();
 
   usuarioNuvem.cargo=vinculo.cargo;
   usuarioNuvem.perfil=perfilLegadoPorCargo(vinculo.cargo);
