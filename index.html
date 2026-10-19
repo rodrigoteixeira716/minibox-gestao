@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="pt-BR">
-<!-- BUILD: MINIBOX GESTAO v1.0.2 DEV - BASE DESPERSONALIZADA -->
+<!-- BUILD: MINIBOX GESTAO v1.0.3 DEV - BASE DESPERSONALIZADA -->
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
@@ -307,7 +307,7 @@ body.sidebarCollapsed .sidebarBrand{display:none}
     <p id="loginDescricao">Entre com sua conta da nuvem.</p>
 
     <div id="loginNormal">
-      <div class="msg">🧪 MiniBox Gestão v1.0.2 DEV — ambiente de desenvolvimento.</div>
+      <div class="msg">🧪 MiniBox Gestão v1.0.3 DEV — ambiente de desenvolvimento.</div>
       <label>E-mail</label>
       <input id="loginUsuario" type="email" autocomplete="username" placeholder="Seu e-mail">
       <label>Senha</label>
@@ -322,6 +322,37 @@ body.sidebarCollapsed .sidebarBrand{display:none}
       <button id="entrarDemoBtn" class="btn gray" style="width:100%;font-size:16px" type="button">👁️ ENTRAR NO MODO DEMONSTRAÇÃO</button>
       <div class="note" style="margin-top:8px;text-align:center">Dados fictícios • nenhuma informação real da loja é carregada • alterações bloqueadas</div>
       <div id="loginMsg"></div>
+    </div>
+  </div>
+</div>
+
+
+<div id="modalOnboardingEmpresa" class="modal hidden">
+  <div class="modalBox" style="max-width:520px">
+    <h2>🏢 Bem-vindo ao MiniBox Gestão</h2>
+    <div class="msg">Sua conta foi autenticada com sucesso. Agora crie a primeira empresa vinculada a este acesso.</div>
+
+    <label>Nome da empresa *</label>
+    <input id="onboardingEmpresaNome" placeholder="Ex.: Mercado Central">
+
+    <label>Nome fantasia</label>
+    <input id="onboardingEmpresaFantasia" placeholder="Opcional">
+
+    <label>CPF/CNPJ</label>
+    <input id="onboardingEmpresaDocumento" placeholder="Opcional">
+
+    <label>Telefone</label>
+    <input id="onboardingEmpresaTelefone" placeholder="Opcional">
+
+    <label>E-mail comercial</label>
+    <input id="onboardingEmpresaEmail" type="email" placeholder="Opcional">
+
+    <button id="onboardingCriarEmpresaBtn" class="btn primary" type="button" style="width:100%;margin-top:16px;font-size:16px">
+      🚀 CRIAR MINHA EMPRESA
+    </button>
+    <div id="onboardingEmpresaMsg"></div>
+    <div class="note" style="margin-top:10px">
+      O seu usuário será vinculado automaticamente como proprietário desta empresa.
     </div>
   </div>
 </div>
@@ -375,7 +406,7 @@ body.sidebarCollapsed .sidebarBrand{display:none}
 <header id="appHeader" class="hidden">
   <div class="appBrand">
     <div class="appBrandLogoText"><span>MiniBox</span> Gestão</div>
-    <div class="appBrandSub">PLATAFORMA DE GESTÃO • v1.0.2 DEV</div>
+    <div class="appBrandSub">PLATAFORMA DE GESTÃO • v1.0.3 DEV</div>
   </div>
   <div class="userBar">
     <span class="userIdentity">👤 <b id="usuarioLogadoNome">—</b> <span id="usuarioLogadoPerfil"></span></span>
@@ -1858,12 +1889,84 @@ function aplicarEstadoNuvem(d){
 }
 async function obterPerfilNuvem(user){
   const {data,error}=await sb.from('perfis')
-    .select('id,loja_id,nome,perfil,ativo,permissoes')
+    .select('id,nome,ativo')
     .eq('id',user.id)
     .single();
   if(error)throw new Error('Perfil: '+error.message);
   if(!data?.ativo)throw new Error('Este usuário está desativado.');
   return data;
+}
+
+async function obterVinculosEmpresaNuvem(user){
+  const {data,error}=await sb.from('empresa_usuarios')
+    .select('id,empresa_id,cargo,ativo,created_at')
+    .eq('usuario_id',user.id)
+    .eq('ativo',true)
+    .order('created_at',{ascending:true});
+  if(error)throw new Error('Empresas: '+error.message);
+  return Array.isArray(data)?data:[];
+}
+
+async function obterEmpresaNuvem(empresaId){
+  const {data,error}=await sb.from('empresas')
+    .select('id,nome,nome_fantasia,documento,telefone,email,ativo')
+    .eq('id',empresaId)
+    .single();
+  if(error)throw new Error('Empresa: '+error.message);
+  if(!data?.ativo)throw new Error('Esta empresa está desativada.');
+  return data;
+}
+
+function perfilLegadoPorCargo(cargo){
+  return ['proprietario','administrador'].includes(cargo)?'admin':'funcionario';
+}
+
+function mostrarOnboardingEmpresa(){
+  const modal=$('modalOnboardingEmpresa');
+  if(modal)modal.classList.remove('hidden');
+  const email=$('onboardingEmpresaEmail');
+  if(email && !email.value && usuarioNuvem?.email)email.value=usuarioNuvem.email;
+}
+
+function esconderOnboardingEmpresa(){
+  const modal=$('modalOnboardingEmpresa');
+  if(modal)modal.classList.add('hidden');
+}
+
+async function criarPrimeiraEmpresaNuvem(){
+  const btn=$('onboardingCriarEmpresaBtn');
+  const msg=$('onboardingEmpresaMsg');
+  const nome=$('onboardingEmpresaNome')?.value.trim()||'';
+  if(!nome){
+    if(msg)msg.innerHTML='<div class="msg err">Informe o nome da empresa.</div>';
+    return;
+  }
+
+  if(btn)btn.disabled=true;
+  if(msg)msg.innerHTML='<div class="msg">🏢 Criando empresa e vinculando proprietário...</div>';
+
+  try{
+    const {data,error}=await sb.rpc('criar_empresa',{
+      p_nome:nome,
+      p_nome_fantasia:$('onboardingEmpresaFantasia')?.value.trim()||null,
+      p_documento:$('onboardingEmpresaDocumento')?.value.trim()||null,
+      p_telefone:$('onboardingEmpresaTelefone')?.value.trim()||null,
+      p_email:$('onboardingEmpresaEmail')?.value.trim()||null
+    });
+    if(error)throw error;
+    if(!data)throw new Error('O Supabase não retornou o identificador da empresa.');
+
+    esconderOnboardingEmpresa();
+
+    const {data:sessao,error:sessaoErro}=await sb.auth.getSession();
+    if(sessaoErro)throw sessaoErro;
+    await prepararSessaoNuvem(sessao.session);
+
+  }catch(e){
+    if(msg)msg.innerHTML='<div class="msg err">Não foi possível criar a empresa: '+esc(e?.message||String(e))+'</div>';
+  }finally{
+    if(btn)btn.disabled=false;
+  }
 }
 async function baixarEstadoNuvem(){
   atualizarCloudStatus('🔄 Consultando a nuvem...');
@@ -2062,42 +2165,80 @@ function mostrarLogin(){
   $('loginMsg').innerHTML='';
 }
 async function prepararSessaoNuvem(session){
-  if(!session?.user){usuarioNuvem=null;perfilNuvem=null;lojaIdNuvem=null;mostrarLogin();return;}
+  if(!session?.user){
+    usuarioNuvem=null;perfilNuvem=null;lojaIdNuvem=null;
+    esconderOnboardingEmpresa();
+    mostrarLogin();
+    return;
+  }
   if(!sb)throw new Error('Biblioteca do Supabase não carregou.');
+
   perfilNuvem=await obterPerfilNuvem(session.user);
-  lojaIdNuvem=perfilNuvem.loja_id;
+
   usuarioNuvem={
     id:session.user.id,
     nome:perfilNuvem.nome||session.user.email,
     usuario:session.user.email,
     email:session.user.email,
-    perfil:perfilNuvem.perfil,
+    perfil:'funcionario',
+    cargo:null,
     ativo:perfilNuvem.ativo,
-    permissoes:perfilNuvem.permissoes||{},
+    permissoes:{},
     ultimoLogin:new Date().toISOString()
   };
-  usuarios=[usuarioNuvem];
 
-  const remoto=await baixarEstadoNuvem();
-  if(!remoto){
-    if(temDadosLocaisRelevantes()){
-      const ok=confirm(
-        'A nuvem ainda está vazia e este aparelho possui dados do MiniBox Gestão.\n\n'+
-        'Deseja enviar os dados deste aparelho para a nuvem agora?\n\n'+
-        'Recomendado: OK.'
-      );
-      if(ok)await enviarEstadoNuvem('migração inicial');
-      else atualizarCloudStatus('⚠️ Nuvem vazia. Os dados locais ainda não foram enviados.','err');
-    }else{
-      await enviarEstadoNuvem('inicial');
-    }
+  const vinculos=await obterVinculosEmpresaNuvem(session.user);
+
+  if(!vinculos.length){
+    lojaIdNuvem=null;
+    usuarioNuvem.perfil='admin';
+    usuarioNuvem.cargo='proprietario';
+    mostrarLogin();
+    $('loginMsg').innerHTML='<div class="msg ok">✅ Login confirmado. Falta apenas criar sua primeira empresa.</div>';
+    mostrarOnboardingEmpresa();
+    return;
   }
-  iniciarRealtimeNuvem();
+
+  const vinculo=vinculos[0];
+  lojaIdNuvem=vinculo.empresa_id; // compatibilidade temporária: agora representa empresa_id
+  const empresa=await obterEmpresaNuvem(lojaIdNuvem);
+
+  usuarioNuvem.cargo=vinculo.cargo;
+  usuarioNuvem.perfil=perfilLegadoPorCargo(vinculo.cargo);
+  usuarioNuvem.empresa_id=lojaIdNuvem;
+  usuarioNuvem.empresa_nome=empresa.nome_fantasia||empresa.nome;
+  perfilNuvem.cargo=vinculo.cargo;
+  perfilNuvem.empresa_id=lojaIdNuvem;
+  perfilNuvem.empresa=empresa;
+  perfilNuvem.perfil=usuarioNuvem.perfil;
+  perfilNuvem.permissoes={};
+
+  usuarios=[usuarioNuvem];
+  esconderOnboardingEmpresa();
+
+  // A fundação multiempresa já está ativa. As tabelas operacionais serão
+  // reconstruídas nas próximas etapas; por isso a ausência de app_state
+  // não impede o primeiro acesso à plataforma.
+  let remoto=null;
+  try{
+    remoto=await baixarEstadoNuvem();
+  }catch(e){
+    const m=String(e?.message||e||'');
+    console.warn('Camada operacional ainda não disponível:',m);
+    atualizarCloudStatus('🏗️ Empresa conectada. Estrutura operacional da nuvem será criada nas próximas etapas.','');
+  }
+
+  if(remoto){
+    iniciarRealtimeNuvem();
+  }
+
   mostrarApp();
-  climaCarregarUltimo();
-  climaRegistrarAutomatico(false);
-  climaCarregarHistorico();
+  if($('usuarioLogadoNome'))$('usuarioLogadoNome').textContent=usuarioNuvem.nome||session.user.email;
+  if($('usuarioLogadoPerfil'))$('usuarioLogadoPerfil').textContent=' • '+(empresa.nome_fantasia||empresa.nome)+' • '+vinculo.cargo;
+
+  // Recursos dependentes de tabelas ainda não migradas ficam para as próximas versões.
 }
+
 async function iniciarAutenticacao(){
   if(!sb){$('loginMsg').innerHTML='<div class="msg err">Supabase não carregou. Verifique a internet.</div>';mostrarLogin();return;}
   try{
@@ -2132,6 +2273,7 @@ async function fazerLogin(){
   }
 }
 $('entrarBtn').addEventListener('click',fazerLogin);
+  if($('onboardingCriarEmpresaBtn'))$('onboardingCriarEmpresaBtn').addEventListener('click',criarPrimeiraEmpresaNuvem);
 if($('atualizarDemoAcessosBtn'))$('atualizarDemoAcessosBtn').addEventListener('click',carregarDemoEstatisticas);
 $('entrarDemoBtn').addEventListener('click',entrarModoDemo);
 $('loginSenha').addEventListener('keydown',e=>{if(e.key==='Enter')fazerLogin();});
