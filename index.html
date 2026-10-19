@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="pt-BR">
-<!-- BUILD: MINIBOX GESTAO v1.0.4 DEV - BASE DESPERSONALIZADA -->
+<!-- BUILD: MINIBOX GESTAO v1.0.5 DEV - BASE DESPERSONALIZADA -->
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
@@ -307,7 +307,7 @@ body.sidebarCollapsed .sidebarBrand{display:none}
     <p id="loginDescricao">Entre com sua conta da nuvem.</p>
 
     <div id="loginNormal">
-      <div class="msg">🧪 MiniBox Gestão v1.0.4 DEV — ambiente de desenvolvimento.</div>
+      <div class="msg">🧪 MiniBox Gestão v1.0.5 DEV — ambiente de desenvolvimento.</div>
       <label>E-mail</label>
       <input id="loginUsuario" type="email" autocomplete="username" placeholder="Seu e-mail">
       <label>Senha</label>
@@ -406,7 +406,7 @@ body.sidebarCollapsed .sidebarBrand{display:none}
 <header id="appHeader" class="hidden">
   <div class="appBrand">
     <div class="appBrandLogoText"><span>MiniBox</span> Gestão</div>
-    <div class="appBrandSub">PLATAFORMA DE GESTÃO • v1.0.4 DEV</div>
+    <div class="appBrandSub">PLATAFORMA DE GESTÃO • v1.0.5 DEV</div>
   </div>
   <div class="userBar">
     <span class="userIdentity">👤 <b id="usuarioLogadoNome">—</b> <span id="usuarioLogadoPerfil"></span></span>
@@ -2211,6 +2211,12 @@ async function prepararSessaoNuvem(session){
   lojaIdNuvem=vinculo.empresa_id; // compatibilidade temporária: agora representa empresa_id
   const empresa=await obterEmpresaNuvem(lojaIdNuvem);
   restaurarDadosLocaisAposDemo();
+  try{
+    await carregarProdutosNuvem();
+  }catch(e){
+    console.error(e);
+    throw new Error('Não foi possível carregar os produtos da empresa: '+(e?.message||e));
+  }
 
   usuarioNuvem.cargo=vinculo.cargo;
   usuarioNuvem.perfil=perfilLegadoPorCargo(vinculo.cargo);
@@ -4121,6 +4127,98 @@ $('confirmarPagamentoFiadoBtn').addEventListener('click',function(){
   alert('Pagamento registrado!\\nRecebido: '+money(valor)+(taxa?'\\nTarifa: '+money(taxa)+'\\nLíquido: '+money(liquido):'')+'\\nSaldo: '+money(saldoFiado(f)));
 });
 
+// PRODUTOS NA NUVEM - v1.0.5
+function produtoLocalDaNuvem(p){
+  const codigo=String(p.codigo_barras||p.id||'').trim();
+  return {
+    codigo,
+    produto:{
+      _cloudId:p.id,
+      nome:p.nome||'',
+      preco:num(p.preco_venda),
+      custo:num(p.preco_custo),
+      estoque:num(p.estoque),
+      minimo:num(p.estoque_minimo),
+      ativo:p.ativo!==false,
+      categoria:p.categoria||'',
+      unidade:p.unidade||'UN',
+      observacao:p.observacao||'',
+      promocaoQtdAtiva:false,
+      promocaoQtdMinima:0,
+      promocaoPrecoUnitario:0
+    }
+  };
+}
+
+async function carregarProdutosNuvem(){
+  if(!sb || !lojaIdNuvem)return;
+  const {data,error}=await sb.from('produtos')
+    .select('id,empresa_id,nome,codigo_barras,categoria,preco_custo,preco_venda,estoque,estoque_minimo,unidade,ativo,observacao,created_at,updated_at')
+    .eq('empresa_id',lojaIdNuvem)
+    .order('nome',{ascending:true});
+  if(error)throw new Error('Produtos: '+error.message);
+
+  const novos={};
+  for(const row of (data||[])){
+    const item=produtoLocalDaNuvem(row);
+    if(item.codigo)novos[item.codigo]=item.produto;
+  }
+  produtos=novos;
+  persist(false);
+}
+
+async function salvarProdutoNuvem(dados,cloudId=null){
+  if(!sb || !lojaIdNuvem)throw new Error('Empresa não identificada.');
+  const payload={
+    empresa_id:lojaIdNuvem,
+    nome:dados.nome,
+    codigo_barras:dados.codigo,
+    preco_custo:dados.custo,
+    preco_venda:dados.preco,
+    estoque:dados.estoque,
+    estoque_minimo:dados.minimo,
+    ativo:dados.ativo!==false,
+    unidade:'UN',
+    updated_at:new Date().toISOString()
+  };
+
+  if(cloudId){
+    const {data,error}=await sb.from('produtos')
+      .update(payload)
+      .eq('id',cloudId)
+      .eq('empresa_id',lojaIdNuvem)
+      .select()
+      .single();
+    if(error)throw error;
+    return data;
+  }
+
+  const {data,error}=await sb.from('produtos')
+    .insert(payload)
+    .select()
+    .single();
+  if(error)throw error;
+  return data;
+}
+
+async function definirProdutoAtivoNuvem(produto,ativo){
+  if(!produto?._cloudId)throw new Error('Produto sem vínculo com a nuvem.');
+  const {error}=await sb.from('produtos')
+    .update({ativo,updated_at:new Date().toISOString()})
+    .eq('id',produto._cloudId)
+    .eq('empresa_id',lojaIdNuvem);
+  if(error)throw error;
+}
+
+async function excluirProdutoNuvem(produto){
+  if(!produto?._cloudId)throw new Error('Produto sem vínculo com a nuvem.');
+  const {error}=await sb.from('produtos')
+    .delete()
+    .eq('id',produto._cloudId)
+    .eq('empresa_id',lojaIdNuvem);
+  if(error)throw error;
+}
+
 // PRODUTOS
 function limparProdutoForm(){
   produtoEditando=null;
@@ -4444,28 +4542,56 @@ $('limparEtiquetasA4TopoBtn').addEventListener('click',()=>{quantidadesEtiquetas
 $('limparEtiquetasA4Btn').addEventListener('click',()=>{quantidadesEtiquetasA4={};renderEtiquetasA4();});
 $('gerarEtiquetasA4Btn').addEventListener('click',compartilharPdfEtiquetasA4);
 
-$('salvarProdutoBtn').addEventListener('click',function(){
+$('salvarProdutoBtn').addEventListener('click',async function(){
   const nome=$('produtoNome').value.trim(),codigo=$('produtoCodigo').value.trim();
   const custo=num($('produtoCusto').value),preco=num($('produtoPreco').value);
   const estoque=num($('produtoEstoque').value),minimo=Math.max(0,num($('produtoMinimo').value));
   const promocaoQtdAtiva=$('produtoPromocaoAtiva').checked;
   const promocaoQtdMinima=Math.floor(num($('produtoPromocaoQtd').value));
   const promocaoPrecoUnitario=num($('produtoPromocaoPreco').value);
+
   if(!nome||!codigo||preco<0||custo<0){alert('Preencha nome, código e preços corretamente.');return;}
   if(promocaoQtdAtiva && (promocaoQtdMinima<2 || promocaoPrecoUnitario<0 || promocaoPrecoUnitario>=preco)){
     alert('Na promoção por quantidade, informe no mínimo 2 unidades e um preço promocional menor que o preço normal.');return;
   }
   if(Object.prototype.hasOwnProperty.call(produtos,codigo) && produtoEditando!==codigo){
     alert('Este código já pertence a outro produto. Use o código existente ou gere outro código interno.');
-    $('produtoCodigo').focus();
-    return;
+    $('produtoCodigo').focus(); return;
   }
+
+  const btn=$('salvarProdutoBtn');
   const eraEdicao=!!produtoEditando;
-  if(produtoEditando&&produtoEditando!==codigo)delete produtos[produtoEditando];
-  const ativoAnterior=produtoEditando&&produtos[produtoEditando]?produtos[produtoEditando].ativo!==false:true;
-  produtos[codigo]={nome,preco,custo,estoque,minimo,ativo:ativoAnterior,promocaoQtdAtiva,promocaoQtdMinima:promocaoQtdAtiva?promocaoQtdMinima:0,promocaoPrecoUnitario:promocaoQtdAtiva?promocaoPrecoUnitario:0};persist();limparProdutoForm();atualizarTudo();
-  $('produtoMsg').innerHTML='<div class="msg ok">✅ Produto salvo!</div>';beep();
-  if(!eraEdicao)abrirEtiquetaProduto(codigo);
+  const anterior=produtoEditando?produtos[produtoEditando]:null;
+  const ativoAnterior=anterior?anterior.ativo!==false:true;
+  btn.disabled=true;
+  $('produtoMsg').innerHTML='<div class="msg">☁️ Salvando produto na nuvem...</div>';
+
+  try{
+    const salvo=await salvarProdutoNuvem(
+      {nome,codigo,custo,preco,estoque,minimo,ativo:ativoAnterior},
+      anterior?._cloudId||null
+    );
+
+    if(produtoEditando && produtoEditando!==codigo)delete produtos[produtoEditando];
+    produtos[codigo]={
+      _cloudId:salvo.id,
+      nome,preco,custo,estoque,minimo,ativo:salvo.ativo!==false,
+      promocaoQtdAtiva,promocaoQtdMinima:promocaoQtdAtiva?promocaoQtdMinima:0,
+      promocaoPrecoUnitario:promocaoQtdAtiva?promocaoPrecoUnitario:0
+    };
+
+    persist(false);
+    limparProdutoForm();
+    atualizarTudo();
+    $('produtoMsg').innerHTML='<div class="msg ok">☁️✅ Produto salvo no Supabase!</div>';
+    beep();
+    if(!eraEdicao)abrirEtiquetaProduto(codigo);
+  }catch(e){
+    console.error(e);
+    $('produtoMsg').innerHTML='<div class="msg err">Erro ao salvar produto: '+esc(e?.message||String(e))+'</div>';
+  }finally{
+    btn.disabled=false;
+  }
 });
 $('cancelarProdutoBtn').addEventListener('click',limparProdutoForm);
 
@@ -4576,7 +4702,7 @@ document.querySelectorAll('.filtroCardapio').forEach(btn=>btn.addEventListener('
 
 $('buscaProdutos').addEventListener('input',renderProdutos);
 
-$('listaProdutos').addEventListener('click',e=>{
+$('listaProdutos').addEventListener('click',async e=>{
   const repor=e.target.closest('.reporProduto'),etiqueta=e.target.closest('.etiquetaProduto'),edit=e.target.closest('.editProduto'),desativar=e.target.closest('.desativarProduto'),del=e.target.closest('.delProduto'),etiquetaCombo=e.target.closest('.etiquetaComboCatalogo'),irCombo=e.target.closest('.irComboCatalogo');
   if(etiquetaCombo){
     const codigo=decodeURIComponent(etiquetaCombo.dataset.c);
@@ -4619,13 +4745,16 @@ $('listaProdutos').addEventListener('click',e=>{
   if(desativar){
     const c=decodeURIComponent(desativar.dataset.c),p=produtos[c];if(!p)return;
     if(confirm('Desativar o produto "'+p.nome+'"?')){
-      p.ativo=false;
-      persist();
-      renderProdutos();
-      mostrarSomenteFuncao('produtos','ancProdutosDesativados');
-      document.querySelectorAll('.sidebarSub').forEach(b=>b.classList.toggle('active',b.dataset.goTab==='produtos' && b.dataset.target==='ancProdutosDesativados'));
-      abrirSubmenuDoBotao(document.querySelector('.sidebarMain[data-menu-tab="produtos"]'));
-      beep();
+      try{
+        await definirProdutoAtivoNuvem(p,false);
+        p.ativo=false;
+        persist(false);
+        renderProdutos();
+        mostrarSomenteFuncao('produtos','ancProdutosDesativados');
+        document.querySelectorAll('.sidebarSub').forEach(b=>b.classList.toggle('active',b.dataset.goTab==='produtos' && b.dataset.target==='ancProdutosDesativados'));
+        abrirSubmenuDoBotao(document.querySelector('.sidebarMain[data-menu-tab="produtos"]'));
+        beep();
+      }catch(e){alert('Erro ao desativar produto: '+(e?.message||e));}
     }
     return;
   }
